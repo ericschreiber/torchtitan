@@ -423,11 +423,18 @@ def apply_fsdp(
     # # since FSDP would prefetch them immediately after the forward pass
     # if model.norm is not None and model.output is not None:
     #     # pyrefly: ignore [no-matching-overload]
-    #     fully_shard(
+    #     fooba = fully_shard(
     #         [model.norm, model.output],
     #         **fsdp_config,
     #         reshard_after_forward=reshard_after_forward_policy == "always",
     #     )
+
+    # if reshard_after_forward_policy != "always":
+    #     for module in fooba: 
+    #         fsdp_state = fully_shard.state(module)
+    #         if hasattr(fsdp_state, "_post_forward_hook_handle") and fsdp_state._post_forward_hook_handle is not None:
+    #             fsdp_state._post_forward_hook_handle.remove()
+    #             fsdp_state._post_forward_hook_handle = None
 
     fully_shard(model, **fsdp_config)
 
