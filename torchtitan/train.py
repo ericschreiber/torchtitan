@@ -5,6 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import dataclasses
+import gc
 import importlib
 import json
 import os
@@ -36,7 +37,6 @@ from torchtitan.tools.profiling import (
     maybe_enable_memory_snapshot,
     maybe_enable_profiling,
 )
-
 
 class Trainer(torch.distributed.checkpoint.stateful.Stateful):
     # core configs
@@ -533,16 +533,28 @@ class Trainer(torch.distributed.checkpoint.stateful.Stateful):
             assert len(model_parts) == 1
             with self.train_context():
                 with self.maybe_enable_amp:
-                    pred = model_parts[0](inputs, **extra_inputs, **extra_kwargs)
-                    # Compute loss sum (reduction='sum')
-                    loss_sum = self.loss_fn(pred, labels)
+                #     pred = model_parts[0](inputs, **extra_inputs, **extra_kwargs)
+                #     # Compute loss sum (reduction='sum')
+                #     loss_sum = self.loss_fn(pred, labels)
 
-                    # Scale the loss by the inverse of the total weight denominator before backward
-                    # This ensures gradients are properly normalized across all microbatches
-                    loss = loss_sum / global_valid_tokens
+                #     # Scale the loss by the inverse of the total weight denominator before backward
+                #     # This ensures gradients are properly normalized across all microbatches
+                #     loss = loss_sum / global_valid_tokens
 
-                # need to free pred before bwd to avoid peaking memory
-                del pred
+                # # need to free pred before bwd to avoid peaking memory
+                # del pred
+                # loss.backward()
+
+                    loss = model_parts[0](inputs, **extra_inputs, positions=labels)
+                #     # Compute loss sum (reduction='sum')
+                #     loss_sum = self.loss_fn(pred, labels)
+
+                #     # Scale the loss by the inverse of the total weight denominator before backward
+                #     # This ensures gradients are properly normalized across all microbatches
+                    # loss = loss / global_valid_tokens
+
+                # # need to free pred before bwd to avoid peaking memory
+                # del pred
                 loss.backward()
 
         # The returned loss here is local SUM loss / global_valid_tokens
@@ -692,11 +704,25 @@ class Trainer(torch.distributed.checkpoint.stateful.Stateful):
             while self.should_continue_training():
                 self.step += 1
                 self.gc_handler.run(self.step)
-                try:
-                    self.train_step(data_iterator)
-                except DataloaderExhaustedError:
-                    logger.warning("Ran out of data; last step was canceled.")
-                    break
+
+                # print(torch.cuda.memory_summary(), flush=True)
+
+                # if self.step == 4 and torch.distributed.get_rank() == 2:
+                    # import torch.cuda.profiler as profiler
+                    # profiler.start()
+                    # profiler.cudart().cudaProfilerStart()
+
+                # Use step-specific NVTX range for NCU profiling with --nvtx-include
+                with torch.cuda.nvtx.range(f"train_step_{self.step}"):
+                    try:
+                        self.train_step(data_iterator)
+                    except DataloaderExhaustedError:
+                        logger.warning("Ran out of data; last step was canceled.")
+                        break
+
+                # if self.step == 4 and torch.distributed.get_rank() == 2:
+                    # profiler.cudart().cudaProfilerStop()
+                    # profiler.stop()
 
                 self.checkpointer.save(
                     self.step, last_step=(self.step == job_config.training.steps)

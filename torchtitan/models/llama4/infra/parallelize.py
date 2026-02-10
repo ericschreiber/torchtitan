@@ -419,15 +419,15 @@ def apply_fsdp(
             reshard_after_forward=reshard_after_forward,
         )
 
-    # As an optimization, do not reshard_after_forward the last layers by default
-    # since FSDP would prefetch them immediately after the forward pass
-    if model.norm is not None and model.output is not None:
-        # pyrefly: ignore [no-matching-overload]
-        fully_shard(
-            [model.norm, model.output],
-            **fsdp_config,
-            reshard_after_forward=reshard_after_forward_policy == "always",
-        )
+    # # As an optimization, do not reshard_after_forward the last layers by default
+    # # since FSDP would prefetch them immediately after the forward pass
+    # if model.norm is not None and model.output is not None:
+    #     # pyrefly: ignore [no-matching-overload]
+    #     fully_shard(
+    #         [model.norm, model.output],
+    #         **fsdp_config,
+    #         reshard_after_forward=reshard_after_forward_policy == "always",
+    #     )
 
     fully_shard(model, **fsdp_config)
 
@@ -683,6 +683,12 @@ def apply_compile(
 
         # pyrefly: ignore [missing-attribute]
         model.layers.register_module(layer_id, transformer_block)
+
+    # Compile the final linear layer
+    if model.output_fn is not None:
+        model.output_fn = torch.compile(
+            model.output_fn, backend=compile_config.backend, fullgraph=True
+        )
 
     # Patch some globals only once (apply_compile is called multiple times for PP setup)
     already_patched = (

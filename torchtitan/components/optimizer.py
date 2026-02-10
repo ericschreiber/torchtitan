@@ -25,6 +25,7 @@ from torchtitan.config import Optimizer as OptimizerConfig
 from torchtitan.distributed import ParallelDims
 
 __all__ = [
+    "DummyOptimizer",
     "OptimizersContainer",
     "build_optimizers",
     "build_optimizers_with_moe_load_balancing",
@@ -36,6 +37,37 @@ if has_torchft:
 
 
 T = TypeVar("T", bound=Optimizer)
+
+
+class DummyOptimizer(Optimizer):
+    """A dummy optimizer that carries no state and uses no memory.
+
+    This optimizer is useful for profiling scenarios where you want to
+    isolate memory usage from optimizer states. It performs no actual
+    parameter updates.
+    """
+
+    def __init__(self, params, lr: float = 1e-3, **kwargs) -> None:
+        # Ignore all kwargs except lr to avoid issues with betas, eps, etc.
+        defaults = {"lr": lr}
+        super().__init__(params, defaults)
+
+    @torch.no_grad()
+    def step(self, closure=None) -> None:
+        """Performs a no-op optimization step (no parameter updates)."""
+        loss = None
+        if closure is not None:
+            with torch.enable_grad():
+                loss = closure()
+        return loss
+
+    def state_dict(self) -> dict:
+        """Returns an empty state dict since there is no state."""
+        return {"state": {}, "param_groups": self.param_groups}
+
+    def load_state_dict(self, state_dict: dict) -> None:
+        """No-op since there is no state to load."""
+        pass
 
 
 class OptimizersContainer(Optimizer, Stateful, Generic[T]):
@@ -314,10 +346,15 @@ def build_optimizers(
     optimizer_classes = {
         "Adam": torch.optim.Adam,
         "AdamW": torch.optim.AdamW,
+        "Dummy": DummyOptimizer,
     }
     if name not in optimizer_classes:
         raise NotImplementedError(f"Optimizer {name} not added.")
     optimizer_cls = optimizer_classes[name]
+
+    # DummyOptimizer doesn't need betas, eps, fused, foreach - only pass lr
+    if name == "Dummy":
+        optimizer_kwargs = {"lr": lr}
 
     if optim_in_bwd:
         return OptimizersInBackwardContainer(

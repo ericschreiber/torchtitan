@@ -460,6 +460,7 @@ class Qwen3Model(ModelProtocol):
         self.norm = nn.RMSNorm(model_args.dim, eps=model_args.norm_eps)
 
         self.output = nn.Linear(model_args.dim, model_args.vocab_size, bias=False)
+        self.output_fn = self._fused_out_with_loss
 
         if self.enable_weight_tying:
             self.output.weight = self.tok_embeddings.weight
@@ -562,6 +563,17 @@ class Qwen3Model(ModelProtocol):
             case _:
                 raise TypeError("Only varlen and flex attn masks are supported")
 
+
+    def _fused_out_with_loss(self, inputs: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+        outputs = self.output(inputs)
+        return torch.nn.functional.cross_entropy(
+                outputs.flatten(0, 1).float(),
+                labels.flatten(0, 1),
+                reduction="sum",
+                ignore_index=-100,
+            )
+
+
     def forward(
         self,
         tokens: torch.Tensor,
@@ -586,9 +598,28 @@ class Qwen3Model(ModelProtocol):
         # passthrough for nonexistent layers, allows easy configuration of pipeline parallel stages
         h = self.tok_embeddings(tokens) if self.tok_embeddings is not None else tokens
 
+        # for layer in self.layers.values():
+        #     h = layer(h, self.rope_cache, attention_masks, positions)
+
+        # h = self.norm(h) if self.norm is not None else h
+        # output = self.output(h) if self.output is not None else h
+        # return output
+
+
         for layer in self.layers.values():
-            h = layer(h, self.rope_cache, attention_masks, positions)
+            # h = layer(h, self.rope_cache, attention_masks, positions)
+            h = layer(h, self.rope_cache, attention_masks, None)
 
         h = self.norm(h) if self.norm is not None else h
-        output = self.output(h) if self.output is not None else h
-        return output
+        # output = self.output(h) if self.output is not None else hs
+        loss = self.output_fn(h, positions)
+        del h
+
+        # loss = torch.nn.functional.cross_entropy(
+        #         output.flatten(0, 1).float(),
+        #         positions.flatten(0, 1),
+        #         reduction="sum",
+        #         ignore_index=-100,
+        #     )
+        # del output
+        return loss
