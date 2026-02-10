@@ -167,7 +167,7 @@ qwen3_args = {
     ),
     "30B-A3B-debug-full-vocab": Qwen3ModelArgs(
         vocab_size=151936,
-        enable_weight_tying=True,
+        # enable_weight_tying=True,
         max_seq_len=262144,
         head_dim=128,
         dim=2048,
@@ -191,7 +191,7 @@ qwen3_args = {
     ),
     "30B-A3B-debug": Qwen3ModelArgs(
         vocab_size=2048,
-        enable_weight_tying=True,
+        # enable_weight_tying=True,
         max_seq_len=262144,
         head_dim=128,
         dim=2048,
