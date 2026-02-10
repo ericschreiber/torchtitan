@@ -545,13 +545,13 @@ class Trainer(torch.distributed.checkpoint.stateful.Stateful):
                 # del pred
                 # loss.backward()
 
-                    loss = model_parts[0](inputs, **extra_inputs, positions=labels)
+                    loss = model_parts[0](inputs, **extra_inputs, **extra_kwargs, labels=labels)
                 #     # Compute loss sum (reduction='sum')
                 #     loss_sum = self.loss_fn(pred, labels)
 
-                #     # Scale the loss by the inverse of the total weight denominator before backward
-                #     # This ensures gradients are properly normalized across all microbatches
-                    # loss = loss / global_valid_tokens
+                    # Scale the loss by the inverse of the total weight denominator before backward
+                    # This ensures gradients are properly normalized across all microbatches
+                    loss = loss / global_valid_tokens
 
                 # # need to free pred before bwd to avoid peaking memory
                 # del pred

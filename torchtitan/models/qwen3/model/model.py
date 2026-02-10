@@ -579,6 +579,7 @@ class Qwen3Model(ModelProtocol):
         tokens: torch.Tensor,
         attention_masks: AttentionMasksType | None = None,
         positions: torch.Tensor | None = None,
+        labels: torch.Tensor | None = None,
     ):
         """
         Perform a forward pass through the Transformer model.
@@ -598,21 +599,21 @@ class Qwen3Model(ModelProtocol):
         # passthrough for nonexistent layers, allows easy configuration of pipeline parallel stages
         h = self.tok_embeddings(tokens) if self.tok_embeddings is not None else tokens
 
-        # for layer in self.layers.values():
-        #     h = layer(h, self.rope_cache, attention_masks, positions)
+        for layer in self.layers.values():
+            h = layer(h, self.rope_cache, attention_masks, positions)
 
         # h = self.norm(h) if self.norm is not None else h
         # output = self.output(h) if self.output is not None else h
         # return output
 
 
-        for layer in self.layers.values():
-            # h = layer(h, self.rope_cache, attention_masks, positions)
-            h = layer(h, self.rope_cache, attention_masks, None)
+        # for layer in self.layers.values():
+        #     # h = layer(h, self.rope_cache, attention_masks, positions)
+        #     h = layer(h, self.rope_cache, attention_masks, None)
 
         h = self.norm(h) if self.norm is not None else h
         # output = self.output(h) if self.output is not None else hs
-        loss = self.output_fn(h, positions)
+        loss = self.output_fn(inputs=h, labels=labels)
         del h
 
         # loss = torch.nn.functional.cross_entropy(
